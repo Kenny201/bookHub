@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v3.1
+    command:
+      - --api.insecure=true
+      - --providers.docker=true
+      - --entrypoints.web.address=:8081
+      - --log.level=DEBUG
+    ports:
+      - "8081:8081"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - mynetwork
+  zookeeper:
+    image: wurstmeister/zookeeper
+    platform: linux/amd64
+    ports:
+      - "2181:2181"
+    networks:
+      - mynetwork
+
+  kafka:
+    image: wurstmeister/kafka
+    platform: linux/amd64
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://kafka:9092,OUTSIDE://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_LISTENERS: INSIDE://0.0.0.0:9092,OUTSIDE://0.0.0.0:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+      KAFKA_PORT: 9092
+    depends_on:
+      - zookeeper
+    networks:
+      - mynetwork
+  kafdrop:
+    image: obsidiandynamics/kafdrop
+    platform: linux/amd64
+    ports:
+      - "9000:9000"
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BROKERCONNECT: "kafka:9092"
+    networks:
+      - mynetwork
+  #  # Сервис каталога книг (Catalog Service)
+  #  catalog-service:
+  #    build:
+  #      context: ./catalog-service
+  #      dockerfile: Dockerfile
+  #    environment:
+  #      - KAFKA_BROKER=kafka:9092
+  #      - DATABASE_URL=postgres://user:password@db:5432/books_db?sslmode=disable
+  #    depends_on:
+  #      - kafka
+  #      - db
+  #    ports:
+  #      - "8081:8080"
+
+  user_service:
+    build:
+      context: ./user_service
+      dockerfile: Dockerfile
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - DATABASE_URL=mongodb://userdb:27017/users
+    depends_on:
+      - kafka
+      - userdb
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.user_service.rule=PathPrefix(`/users`)"
+      - "traefik.http.routers.user_service.entrypoints=web"
+      - "traefik.http.services.user_service.loadbalancer.server.port=80"
+    networks:
+      - mynetwork
+  #  # Сервис бронирования (Booking Service)
+  #  booking-service:
+  #    build:
+  #      context: ./booking-service
+  #      dockerfile: Dockerfile
+  #    environment:
+  #      - KAFKA_BROKER=kafka:9092
+  #      - DATABASE_URL=redis://redis:6379/0
+  #    depends_on:
+  #      - kafka
+  #      - redis
+  #    ports:
+  #      - "8083:8080"
+
+  db:
+    image: postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: books_db
+    ports:
+      - "5432:5432"
+
+  userdb:
+    image: mongo
+    ports:
+      - "27017:27017"
+    networks:
+      - mynetwork
+
+  redis:
+    image: redis
+    ports:
+      - "6379:6379"
+networks:
+  mynetwork:
+    driver: bridge
