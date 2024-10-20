@@ -1,18 +1,27 @@
+# Этап сборки
 FROM golang:alpine AS builder
 
-COPY . /app/
-WORKDIR /app/
-
-RUN set -Eeux && \
-    go mod download && \
-    go mod verify
-
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o build/user_service ./cmd/user/main.go
-
-FROM scratch
+# Устанавливаем рабочую директорию
 WORKDIR /app
 
-COPY --from=builder /app/build/user_service /app/user_service
-COPY --from=builder /app/.env /app/.env
+# Копируем go.mod и go.sum
+COPY go.mod go.sum ./
 
-ENTRYPOINT ["/app/user_service"]
+# Устанавливаем зависимости
+RUN go mod download
+
+# Копируем все файлы
+COPY . .
+
+# Этап разработки (для live reload)
+FROM golang:alpine AS dev
+WORKDIR /app
+
+# Копируем файлы из builder
+COPY --from=builder /app ./
+
+# Устанавливаем air
+RUN go install github.com/air-verse/air@latest
+
+# Запускаем приложение через air с указанием конфигурационного файла
+CMD ["air", "-c", ".air.toml"]

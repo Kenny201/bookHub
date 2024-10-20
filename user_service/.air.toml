@@ -1,0 +1,12 @@
+root = "./"
+tmp_dir = "tmp"
+
+[build]
+bin = "./tmp/main"
+cmd = "go build -o tmp/main ./cmd/user/main.go"  # Убедитесь, что путь к main.go правильный
+include = ["**/*.go"]
+exclude = ["tmp/*", "vendor/*"]
+
+[watch]
+include = ["**/*.go"]
+exclude = ["tmp/*", "vendor/*"]
